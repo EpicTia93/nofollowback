@@ -1,3 +1,4 @@
+# Main script
 import json
 
 # Load the following.json file
