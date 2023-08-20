@@ -1,3 +1,4 @@
+// Snippet that creates the followers.txt output file
 import json
 
 # Load the followers.json data from the file
