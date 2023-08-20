@@ -1,3 +1,4 @@
+# Snippet that creates the following.txt output file
 import json
 
 # Load the following.json file
