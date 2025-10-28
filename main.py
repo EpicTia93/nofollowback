@@ -1,45 +1,91 @@
-# Main script
+# main.py
 import json
+from urllib.parse import urlparse
 
-# Load the following.json file
-with open('following.json', 'r') as json_file:
-    data = json.load(json_file)
+def username_from_entry(entry):
+    # 1) Instagram "following" export often stores the handle in "title"
+    if isinstance(entry, dict) and entry.get("title"):
+        return entry["title"].strip()
 
-# Write each value to a file
-with open('following.txt', 'w') as output_file:
-    for entry in data['relationships_following']:
-        for item in entry['string_list_data']:
-            output_file.write(item['value'] + '\n')
+    # 2) Some exports put it inside string_list_data[0]['value']
+    sld = entry.get("string_list_data", []) if isinstance(entry, dict) else []
+    if sld:
+        first = sld[0]
+        if isinstance(first, dict) and first.get("value"):
+            return first["value"].strip()
 
+        # 3) Fallback: parse from href
+        href = first.get("href")
+        if href:
+            path = urlparse(href).path  # e.g. "/_u/manuel_fiorello"
+            parts = [p for p in path.split("/") if p]
+            if parts:
+                # Prefer the last segment; for "/_u/user" it's "user"
+                return parts[-1].strip()
 
+    return None
 
-# Load the followers.json data from the file
-with open('followers.json', 'r') as json_file:
-    data = json.load(json_file)
+def load_entries(obj, likely_keys):
+    """Return the first list found among likely_keys, else obj if it's already a list."""
+    if isinstance(obj, list):
+        return obj
+    if isinstance(obj, dict):
+        for k in likely_keys:
+            if k in obj and isinstance(obj[k], list):
+                return obj[k]
+    return []
 
-# Extract "value" fields from the JSON data
-values = [entry['string_list_data'][0]['value'] for entry in data]
+# --- Process following.json ---
+with open("following.json", "r") as f:
+    following_obj = json.load(f)
 
-# Write the extracted values to followers.txt
-with open('followers.txt', 'w') as txt_file:
-    for value in values:
-        txt_file.write(value + '\n')
+following_entries = load_entries(following_obj, [
+    "relationships_following", "following", "data"
+])
 
+following_usernames = []
+for entry in following_entries:
+    u = username_from_entry(entry)
+    if u:
+        following_usernames.append(u)
+    else:
+        # Optional: uncomment to debug
+        # print("Skipping entry (no username):", entry)
+        pass
 
+with open("following.txt", "w") as out:
+    for u in following_usernames:
+        out.write(u + "\n")
 
-# Read the contents of following.txt and followers.txt
-with open('following.txt', 'r') as following_file:
-    following = set(following_file.read().splitlines())
+# --- Process followers.json ---
+with open("followers.json", "r") as f:
+    followers_obj = json.load(f)
 
-with open('followers.txt', 'r') as followers_file:
-    followers = set(followers_file.read().splitlines())
+followers_entries = load_entries(followers_obj, [
+    "relationships_followers", "followers", "data"
+])
 
-# Calculate the differences (users you follow but who don't follow you back)
-noback = following - followers
+followers_usernames = []
+for entry in followers_entries:
+    u = username_from_entry(entry)
+    if u:
+        followers_usernames.append(u)
 
-# Write the differences to noback.txt
-with open('noback.txt', 'w') as noback_file:
-    for user in noback:
-        noback_file.write(user + '\n')
+with open("followers.txt", "w") as out:
+    for u in followers_usernames:
+        out.write(u + "\n")
 
-print("List of users who don't follow you back can be found in noback.txt file")
+# --- Compute "not following back" ---
+with open("following.txt", "r") as f:
+    following_set = set(line.strip() for line in f if line.strip())
+
+with open("followers.txt", "r") as f:
+    followers_set = set(line.strip() for line in f if line.strip())
+
+noback = sorted(following_set - followers_set)
+
+with open("noback.txt", "w") as out:
+    for u in noback:
+        out.write(u + "\n")
+
+print("List of users who don't follow you back can be found in noback.txt")
